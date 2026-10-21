@@ -27,6 +27,7 @@ C = {
     "chip":          ("#DFE1E5", "#26262A"),
     "chip_hover":    ("#D3D6DB", "#303035"),
     "border":        ("#C9CBD1", "#36363C"),     # só em campos de texto
+    "knob":          ("#FFFFFF", "#D9D9DE"),     # bolinha das chaves liga/desliga
     "text":          ("#0B0B0D", "#EDEDF0"),
     "muted":         ("#55555D", "#A0A0A8"),
     # destaque: o vermelho da camisa
@@ -92,6 +93,11 @@ APPEARANCE = {"auto": "system", "claro": "light", "escuro": "dark"}
 
 def apply_theme(appearance: str) -> None:
     """Aplica a paleta aos componentes padrão do CustomTkinter."""
+    # Ao trocar claro/escuro, o CustomTkinter esconde e mostra cada janela para
+    # repintar a barra de título. Num diálogo aberto isso some com ele e deixa o
+    # painel travado atrás. A barra de título é pintada por style_titlebar.
+    ctk.CTk._deactivate_windows_window_header_manipulation = True
+    ctk.CTkToplevel._deactivate_windows_window_header_manipulation = True
     ctk.set_appearance_mode(APPEARANCE.get(appearance, "system"))
     ctk.set_default_color_theme("blue")
     t = ctk.ThemeManager.theme
@@ -111,7 +117,7 @@ def apply_theme(appearance: str) -> None:
                        border_color=list(C["muted"]), text_color=list(C["text"]))
     t["CTkCheckBox"]["checkmark_color"] = list(C["on_accent"])
     t["CTkSwitch"].update(progress_color=list(C["accent"]), fg_color=list(C["chip_hover"]),
-                          button_color=list(C["surface"]), button_hover_color=list(C["surface_hover"]),
+                          button_color=list(C["knob"]), button_hover_color=list(C["knob"]),
                           text_color=list(C["text"]))
     t["CTkOptionMenu"].update(fg_color=list(C["field"]), button_color=list(C["chip"]),
                               button_hover_color=list(C["chip_hover"]), text_color=list(C["text"]),
@@ -155,6 +161,12 @@ def danger_button(master, text: str, command, **kw) -> ctk.CTkButton:
         master, text=text, command=command, font=font(13, "bold"),
         fg_color=C["danger"], hover_color=C["danger_hover"], text_color=C["on_danger"], **kw,
     )
+
+
+def switch(master, **kw) -> ctk.CTkSwitch:
+    """Chave liga/desliga com um aro na cor do trilho: a bolinha aparece em qualquer fundo."""
+    kw.setdefault("border_color", C["chip_hover"])
+    return ctk.CTkSwitch(master, **kw)
 
 
 def link_button(master, text: str, command, color=None, **kw) -> ctk.CTkButton:

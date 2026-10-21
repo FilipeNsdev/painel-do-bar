@@ -42,7 +42,7 @@ class SettingsDialog(Dialog):
             b.pack(side="left", padx=(0, 6))
             self.tab_buttons[name] = b
             page = ctk.CTkFrame(self.content, corner_radius=theme.RADIUS_CARD, fg_color=C["surface"],
-                                border_width=0, width=self.width, height=440)
+                                border_width=0, width=self.width, height=476)
             page.pack_propagate(False)
             build(page)
             self.pages[name] = page
@@ -117,7 +117,7 @@ class SettingsDialog(Dialog):
 
         supported = scheduler.is_supported()
         self.weekly_var = ctk.BooleanVar(value=self.s.weekly_enabled)
-        ctk.CTkSwitch(tab, text="Fazer backup toda semana", variable=self.weekly_var,
+        theme.switch(tab, text="Fazer backup toda semana", variable=self.weekly_var,
                       font=theme.font(13), state="normal" if supported else "disabled",
                       command=self._paint_weekly).pack(anchor="w", padx=18, pady=(4, 6))
 
@@ -146,11 +146,11 @@ class SettingsDialog(Dialog):
             self._note(tab, "O backup automático só funciona no Windows.", pady=(6, 6))
 
         self.overdue_var = ctk.BooleanVar(value=self.s.backup_on_open_if_overdue)
-        ctk.CTkSwitch(tab, text=f"Ao abrir o painel, fazer backup se o último tiver mais de "
+        theme.switch(tab, text=f"Ao abrir o painel, fazer backup se o último tiver mais de "
                                 f"{self.s.backup_overdue_days} dias",
                       variable=self.overdue_var, font=theme.font(13)).pack(anchor="w", padx=18, pady=(2, 6))
         self.notify_var = ctk.BooleanVar(value=self.s.notify_after_auto_backup)
-        ctk.CTkSwitch(tab, text="Mostrar um aviso quando o backup automático terminar",
+        theme.switch(tab, text="Mostrar um aviso quando o backup automático terminar",
                       variable=self.notify_var, font=theme.font(13)).pack(anchor="w", padx=18, pady=(0, 6))
         self._paint_weekly()
 

@@ -123,12 +123,17 @@ A logo real (o Sabão de camisa vermelha, recortada em círculo) está em
   `art.card_image`. Se mudar `surface` no tema, elas acompanham.
 - PyInstaller: sem `PIL._tkinter_finder` nos hiddenimports o .exe **fecha ao abrir**. Está no `.spec`.
 - `.bat` precisa de quebra de linha CRLF e só caracteres ASCII.
+- `gerar_exe.bat` falhando com "Acesso negado" em `build\PainelDoBar\localpycs`: a pasta ficou
+  "somente leitura". Rode `attrib -R build\* /S /D` e apague a pasta `build` (é só sobra do build).
 - Python 3.14.7+ no Windows usa Tk 9. Foi testado e funciona (inclusive o .exe).
 - `wraplength` do CTkLabel é multiplicado pelo zoom do Windows; o `event.width` do `<Configure>`
   já vem em pixels reais. Divida pelo `ScalingTracker.get_widget_scaling` antes de usar.
 - `CardGrid` posiciona os cartões com `place` para animar. Com `place`, o miolo do
   `CTkScrollableFrame` não ganha altura sozinho: use `tkinter.Frame.configure(self, height=...)`
   em pixels reais. O `configure(height=...)` do CTk muda a área **visível**, e os cartões somem.
+- Trocar claro/escuro: o CustomTkinter esconde e mostra cada janela para repintar a barra de
+  título. Com um diálogo aberto (grab), ele "fecha" e o painel trava. Por isso `apply_theme`
+  liga `_deactivate_windows_window_header_manipulation` e quem pinta a barra é `style_titlebar`.
 - `PopupMenu` não pode fechar só porque perdeu o foco: o painel pega o foco de volta logo
   depois de abrir. Ele fecha com clique fora, Esc ou quando o foco sai do programa.
 - Ajudante da atualização (PowerShell aberto pelo .exe): precisa de console escondido

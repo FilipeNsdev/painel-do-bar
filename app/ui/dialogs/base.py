@@ -40,6 +40,9 @@ def style_titlebar(window: tkinter.Misc) -> None:
             r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
             return ctypes.c_int(r | g << 8 | b << 16)
 
+        # 20 = modo escuro (cor dos botões minimizar/fechar), sem esconder a janela
+        dark = ctypes.c_int(1 if ctk.get_appearance_mode() == "Dark" else 0)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
         # 34 = borda, 35 = fundo da barra, 36 = texto do título
         for attribute, color in ((34, C["chip_hover"]), (35, C["surface"]), (36, C["text"])):
             value = colorref(theme.pick(color))

@@ -2,8 +2,8 @@
 # Ao lançar uma versão nova, atualize os números aqui e em app/__init__.py.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 2, 0),
-    prodvers=(1, 1, 2, 0),
+    filevers=(1, 1, 3, 0),
+    prodvers=(1, 1, 3, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -17,11 +17,11 @@ VSVersionInfo(
         '041604B0',
         [StringStruct('CompanyName', 'Filipe'),
          StringStruct('FileDescription', 'Painel do Bar'),
-         StringStruct('FileVersion', '1.1.2'),
+         StringStruct('FileVersion', '1.1.3'),
          StringStruct('InternalName', 'PainelDoBar'),
          StringStruct('OriginalFilename', 'PainelDoBar.exe'),
          StringStruct('ProductName', 'Painel do Bar'),
-         StringStruct('ProductVersion', '1.1.2')])
+         StringStruct('ProductVersion', '1.1.3')])
     ]),
     VarFileInfo([VarStruct('Translation', [0x0416, 1200])])
   ]

@@ -98,7 +98,7 @@ class EditItemDialog(Dialog):
 
         self.backup_var = ctk.BooleanVar(value=self.item.include_in_backup)
         if self.item.kind is not ItemKind.LINK:
-            ctk.CTkSwitch(self.content, text="Incluir no backup", variable=self.backup_var,
+            theme.switch(self.content, text="Incluir no backup", variable=self.backup_var,
                           font=theme.font(13)).pack(anchor="w", pady=(6, 10))
 
         if self.path is not None:
