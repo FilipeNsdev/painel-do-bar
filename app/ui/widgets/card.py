@@ -1,8 +1,8 @@
 """Cartão de um item do painel: foto (ou capa colorida), nome e detalhes.
 
 Clique abre o arquivo. Botão direito (ou o botão "···") abre o menu.
-Arrastar muda a ordem: quem cuida disso é a grade (CardGrid), o cartão só
-avisa que foi pressionado, arrastado ou solto.
+Arrastar muda a ordem: quem cuida disso (e da animação) é a grade
+(CardGrid); o cartão só avisa que foi pressionado, arrastado ou solto.
 """
 
 from __future__ import annotations
@@ -115,11 +115,7 @@ class Card(ctk.CTkFrame):
         if not inside:
             self.configure(border_color=C["surface"])
 
-    def set_drop_target(self, on: bool) -> None:
-        """Realce de 'solte aqui' durante o arrasto."""
+    def set_dragging(self, on: bool) -> None:
+        """Cartão sendo arrastado: contorno vermelho, por cima dos outros."""
         self._highlight = on
         self.configure(border_color=C["accent"] if on else C["surface"])
-
-    def set_dragging(self, on: bool) -> None:
-        self.configure(fg_color=C["chip"] if on else C["surface"],
-                       border_color=C["chip"] if on else C["surface"])

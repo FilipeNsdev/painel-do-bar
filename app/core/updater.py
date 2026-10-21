@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import subprocess
@@ -25,11 +26,13 @@ from typing import Callable
 
 from app import APP_ID, UPDATE_REPO, __version__
 
+log = logging.getLogger(__name__)
+
 ASSET_NAME = f"{APP_ID}.exe"
 _API = "https://api.github.com/repos/{repo}/releases/latest"
 _TIMEOUT_S = 10
 _CREATE_NO_WINDOW = 0x08000000
-_DETACHED_PROCESS = 0x00000008
+_CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
 
 class UpdateError(Exception):
@@ -118,25 +121,54 @@ def cleanup(folder: Path) -> None:
             pass
 
 
+def clean_env(env: dict[str, str]) -> dict[str, str]:
+    """Ambiente sem as variáveis que o .exe (PyInstaller) passa para os filhos.
+
+    Elas apontam para a pasta temporária do painel que está fechando. O painel
+    novo, aberto pelo ajudante, herdaria isso e morreria ao abrir."""
+    env = {k: v for k, v in env.items() if not k.upper().startswith(("_PYI_", "_MEIPASS"))}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def swap_script(new_exe: Path, current_exe: Path, pids: list[int]) -> str:
     """PowerShell que espera o painel fechar, troca o .exe e abre o novo."""
     def q(p: Path) -> str:
         return "'" + str(p).replace("'", "''") + "'"
     old = current_exe.with_name(f"{APP_ID}.old.exe")
     return f"""
-$ErrorActionPreference = 'SilentlyContinue'
-Wait-Process -Id {",".join(str(p) for p in pids)} -Timeout 60
+$ErrorActionPreference = 'Stop'
+$log = Join-Path $env:TEMP '{APP_ID}_atualizacao.log'
+function Anota($t) {{ Add-Content -Path $log -Value ((Get-Date -Format 'dd/MM HH:mm:ss') + ' ' + $t) -Encoding UTF8 }}
 $cur = {q(current_exe)}; $new = {q(new_exe)}; $old = {q(old)}
+Anota "inicio: trocar $cur"
+foreach ($id in @({",".join(str(p) for p in pids)})) {{
+    try {{ Wait-Process -Id $id -Timeout 60 -ErrorAction Stop; Anota "processo $id fechou" }}
+    catch {{ Anota "processo $id ja tinha fechado" }}
+}}
 $ok = $false
 for ($i = 0; $i -lt 30 -and -not $ok; $i++) {{
     try {{
-        if (Test-Path $old) {{ Remove-Item $old -Force -ErrorAction Stop }}
-        Move-Item $cur $old -Force -ErrorAction Stop
-        try {{ Move-Item $new $cur -Force -ErrorAction Stop; $ok = $true }}
+        if (Test-Path $old) {{ Remove-Item $old -Force }}
+        Move-Item $cur $old -Force
+        try {{ Move-Item $new $cur -Force; $ok = $true }}
         catch {{ Move-Item $old $cur -Force; throw }}
-    }} catch {{ Start-Sleep -Seconds 1 }}
+    }} catch {{ Anota "tentativa $($i + 1): $($_.Exception.Message)"; Start-Sleep -Seconds 1 }}
 }}
-Start-Process $cur
+Anota "troca feita: $ok"
+# o painel novo não pode herdar as variáveis do .exe que fechou (pasta temporária dele)
+Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI_*' -or $_.Name -like '_MEIPASS*' }} |
+    ForEach-Object {{ Remove-Item "Env:$($_.Name)" }}
+$env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+for ($i = 1; $i -le 3; $i++) {{
+    try {{
+        $p = Start-Process -FilePath $cur -WorkingDirectory (Split-Path $cur) -PassThru
+        Start-Sleep -Seconds 8
+        if (-not $p.HasExited) {{ Anota "painel aberto de novo"; break }}
+        Anota "painel fechou logo ao abrir (tentativa $i, codigo $($p.ExitCode))"
+    }} catch {{ Anota "nao abriu o painel: $($_.Exception.Message)" }}
+    Start-Sleep -Seconds 2
+}}
 """
 
 
@@ -147,11 +179,24 @@ def apply(new_exe: Path, current_exe: Path) -> None:
     if parent:
         pids.append(parent)            # no .exe de arquivo único, o pai segura o arquivo
     encoded = base64.b64encode(swap_script(new_exe, current_exe, pids).encode("utf-16-le")).decode("ascii")
+    command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+               "-EncodedCommand", encoded]
+    # O .exe roda dentro de um "job" do Windows que derruba os filhos quando o
+    # painel fecha. O PowerShell da troca precisa sair desse grupo para sobreviver.
+    # E precisa de um console (escondido): sem console nenhum ele morre calado.
     try:
-        subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-             "-EncodedCommand", encoded],
-            creationflags=_CREATE_NO_WINDOW | _DETACHED_PROCESS, close_fds=True,
-        )
+        subprocess.Popen(command, close_fds=True, env=clean_env(dict(os.environ)),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=_CREATE_NO_WINDOW | _CREATE_BREAKAWAY_FROM_JOB)
+        log.info("Ajudante da atualização aberto fora do grupo (breakaway)")
+        return
     except OSError as exc:
-        raise UpdateError("Não consegui instalar a versão nova.") from exc
+        log.info("Grupo não deixou sair (%s); usando o WMI", exc)
+    # O grupo não deixa sair: quem cria o processo é o serviço WMI do Windows, fora do grupo.
+    wmi = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
+           f"-Arguments @{{CommandLine = '{subprocess.list2cmdline(command)}'}}; exit $r.ReturnValue")
+    proc = subprocess.run(["powershell", "-NoProfile", "-Command", wmi],
+                          capture_output=True, creationflags=_CREATE_NO_WINDOW, check=False)
+    log.info("Ajudante da atualização aberto pelo WMI (código %s)", proc.returncode)
+    if proc.returncode != 0:
+        raise UpdateError("Não consegui instalar a versão nova.")

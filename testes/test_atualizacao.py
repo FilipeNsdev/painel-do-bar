@@ -57,9 +57,16 @@ def test_rodando_pelo_codigo_nunca_oferece(panel):
 def test_script_de_troca_guarda_o_antigo_e_reabre():
     s = updater.swap_script(Path(r"C:\Painel D'Bar\PainelDoBar.new.exe"),
                             Path(r"C:\Painel D'Bar\PainelDoBar.exe"), [10, 20])
-    assert "Wait-Process -Id 10,20" in s
+    assert "@(10,20)" in s
     assert r"'C:\Painel D''Bar\PainelDoBar.old.exe'" in s      # aspas escapadas
-    assert "Start-Process $cur" in s
+    assert "Start-Process -FilePath $cur" in s
+    assert "PYINSTALLER_RESET_ENVIRONMENT" in s
+
+
+def test_ambiente_do_ajudante_sem_variaveis_do_exe():
+    env = updater.clean_env({"PATH": "x", "_PYI_ARCHIVE_FILE": "a", "_PYI_PARENT_PROCESS_LEVEL": "1",
+                             "_MEIPASS2": "b", "PAINEL_DADOS": "d"})
+    assert env == {"PATH": "x", "PAINEL_DADOS": "d", "PYINSTALLER_RESET_ENVIRONMENT": "1"}
 
 
 def test_limpa_sobras_de_atualizacao(tmp_path):

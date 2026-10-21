@@ -50,7 +50,9 @@ app/ui/            TELA (CustomTkinter)
   theme.py         TODOS os tokens visuais: cores (pares claro/escuro), fontes, medidas, botões prontos
   art.py           Pillow: capas sem foto (cor lisa + bolhas de sabão), selos, cantos arredondados, logo
   main_window.py   monta a tela e liga botões às ações do Panel
-  widgets/         header, filters, card_grid (layout responsivo + arrastar), card, backup_bar, toast, update_bar
+  widgets/         header, filters, card_grid (place + animação ao arrastar), card, backup_bar, toast,
+                   update_bar, popup_menu (menu dos três pontinhos e do Adicionar)
+  dropfiles.py     soltar arquivos do Explorer na janela (WM_DROPFILES via ctypes; copia para Arquivos)
   dialogs/         base (Dialog + message/confirm), edit_item, add_items, settings
   notification.py  aviso no canto da tela do backup automático
 app/silent.py      backup sem janela
@@ -69,6 +71,7 @@ Regras de arquitetura:
 
 - Nome, foto, descrição e cor do cartão existem **só no painel**. O arquivo real nunca é renomeado.
 - Arquivo colocado/tirado da pasta `Dados\Arquivos` aparece/some sozinho (a janela confere a cada 2 s).
+- Arquivo solto do Explorer na janela é **copiado** para `Dados\Arquivos` (o original fica onde estava).
 - Remover pelo painel **nunca apaga**: move para `Dados\Removidos`.
 - O backup inclui a pasta Arquivos, os atalhos (vinculados) e `Sistema/` (config e fotos).
   Se a nuvem estiver fora do ar, o backup fica no PC com aviso, sem falhar.
@@ -123,6 +126,15 @@ A logo real (o Sabão de camisa vermelha, recortada em círculo) está em
 - Python 3.14.7+ no Windows usa Tk 9. Foi testado e funciona (inclusive o .exe).
 - `wraplength` do CTkLabel é multiplicado pelo zoom do Windows; o `event.width` do `<Configure>`
   já vem em pixels reais. Divida pelo `ScalingTracker.get_widget_scaling` antes de usar.
+- `CardGrid` posiciona os cartões com `place` para animar. Com `place`, o miolo do
+  `CTkScrollableFrame` não ganha altura sozinho: use `tkinter.Frame.configure(self, height=...)`
+  em pixels reais. O `configure(height=...)` do CTk muda a área **visível**, e os cartões somem.
+- `PopupMenu` não pode fechar só porque perdeu o foco: o painel pega o foco de volta logo
+  depois de abrir. Ele fecha com clique fora, Esc ou quando o foco sai do programa.
+- Ajudante da atualização (PowerShell aberto pelo .exe): precisa de console escondido
+  (`CREATE_NO_WINDOW`; com `DETACHED_PROCESS` ele morre calado), sair do "job" do .exe
+  (`CREATE_BREAKAWAY_FROM_JOB`, senão morre junto) e abrir o painel novo sem as variáveis
+  `_PYI_*` herdadas (`PYINSTALLER_RESET_ENVIRONMENT=1`). Ele anota tudo em `%TEMP%\PainelDoBar_atualizacao.log`.
 - No Windows, uma janela nova não vem para a frente sozinha: `capturar_telas.py` põe tudo
   em `-topmost` só na hora da foto. Sem isso as imagens saem com o que estiver por cima.
 

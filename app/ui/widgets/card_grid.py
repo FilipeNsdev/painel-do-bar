@@ -1,8 +1,15 @@
 """Grade de cartões com rolagem, que se ajusta à largura da janela e deixa
-mudar a ordem arrastando um cartão para cima de outro."""
+mudar a ordem arrastando um cartão.
+
+Os cartões ficam em posições calculadas aqui (place), e não no grid do Tk:
+assim dá para animar. Ao arrastar, o cartão segue o mouse e os outros
+deslizam para abrir espaço; ao soltar, ele desliza para o lugar dele.
+"""
 
 from __future__ import annotations
 
+import time
+import tkinter
 from typing import Callable
 
 import customtkinter as ctk
@@ -35,6 +42,11 @@ class CardGrid(ctk.CTkScrollableFrame):
         self._resize_job: str | None = None
         self._drag: dict | None = None
         self._empty: ctk.CTkFrame | None = None
+        self._pos: dict[Card, tuple[float, float]] = {}       # onde cada cartão está agora
+        self._tweens: dict[Card, tuple[float, float, float, float]] = {}
+        self._tween_start = 0.0
+        self._tween_job: str | None = None
+        self._content_height = 0.0
         self._parent_canvas.bind("<Configure>", self._on_resize, add="+")
 
     # ------------------------------------------------------------------ conteúdo
@@ -51,13 +63,17 @@ class CardGrid(ctk.CTkScrollableFrame):
                  on_release=self._release, on_menu=self._menu)
             for data in items
         ]
-        self._layout()
+        self._pos.clear()
+        self._stop_tween()
+        self._layout(animate=False)
 
     def show_empty(self, title: str, text: str, actions: list[tuple[str, Callable[[], None], bool]]) -> None:
         """Tela vazia com orientação do que fazer. actions: (texto, comando, principal?)."""
         for card in self.cards:
             card.destroy()
         self.cards = []
+        self._pos.clear()
+        self._stop_tween()
         self._clear_empty()
         # a logo grande, o título e o que fazer, tudo centralizado
         box = ctk.CTkFrame(self, fg_color="transparent")
@@ -115,28 +131,85 @@ class CardGrid(ctk.CTkScrollableFrame):
     def _apply_metrics(self) -> None:
         self._resize_job = None
         cols, width = self._metrics(self._parent_canvas.winfo_width())
+        changed = width != self._card_width or cols != self._columns
         if width != self._card_width:
             self._card_width = width
             for card in self.cards:
                 card.set_width(width)
-        if cols != self._columns:
-            self._columns = cols
-            self._layout()
+        self._columns = cols
+        if changed and self._drag is None:
+            self._layout()                 # os cartões deslizam para as colunas novas
         self._sync_scrollbar()
 
-    def _layout(self) -> None:
-        if not self.cards:
-            return
+    def _slots(self) -> list[tuple[float, float]]:
+        """Posição (x, y) de cada vaga da grade, em medidas do tema (sem o zoom)."""
         cols = self._columns or 1
         gap = theme.CARD_GAP
-        for i, card in enumerate(self.cards):
-            r, c = divmod(i, cols)
-            card.grid(
-                row=r, column=c, sticky="nw",
-                padx=(MARGIN if c == 0 else 0, gap),
-                pady=(MARGIN - 6 if r == 0 else 0, gap),
-            )
+        scale = self._scale()
+        heights = [c.winfo_reqheight() / scale for c in self.cards]
+        slots: list[tuple[float, float]] = []
+        y = MARGIN - 6
+        for row_start in range(0, len(self.cards), cols):
+            for c in range(min(cols, len(self.cards) - row_start)):
+                slots.append((MARGIN + c * (self._card_width + gap), y))
+            y += max(heights[row_start:row_start + cols]) + gap
+        self._content_height = y + 8
+        return slots
+
+    def _layout(self, *, animate: bool = True, skip: Card | None = None) -> None:
+        """Põe cada cartão na sua vaga. Com animate, desliza até lá."""
+        if not self.cards:
+            return
+        self.update_idletasks()
+        slots = self._slots()
+        # cartões em "place" não dão altura ao miolo rolável: a altura vem daqui, em pixels reais
+        # (o configure do CTkScrollableFrame mudaria a área visível, não o miolo)
+        tkinter.Frame.configure(self, height=round(self._content_height * self._scale()))
+        targets = {card: slots[i] for i, card in enumerate(self.cards) if card is not skip}
+        if animate:
+            self._tween_to(targets)
+        else:
+            for card, (x, y) in targets.items():
+                self._put(card, x, y)
         self.after_idle(self._sync_scrollbar)
+
+    def _put(self, card: Card, x: float, y: float) -> None:
+        self._pos[card] = (x, y)
+        card.place(x=round(x), y=round(y))
+
+    # ------------------------------------------------------------------ animação
+    def _tween_to(self, targets: dict[Card, tuple[float, float]]) -> None:
+        """Desliza os cartões de onde estão até os alvos (rápido no começo, suave no fim)."""
+        for card, (tx, ty) in targets.items():
+            fx, fy = self._pos.get(card, (tx, ty))
+            if (fx, fy) == (tx, ty):
+                self._tweens.pop(card, None)
+                self._put(card, tx, ty)
+            else:
+                self._tweens[card] = (fx, fy, tx, ty)   # quem já andava recomeça de onde está
+        self._tween_start = time.perf_counter()
+        if self._tween_job is None and self._tweens:
+            self._tween_step()
+
+    def _tween_step(self) -> None:
+        t = min(1.0, (time.perf_counter() - self._tween_start) * 1000 / theme.ANIM_MS)
+        ease = 1 - (1 - t) ** 3
+        for card, (fx, fy, tx, ty) in list(self._tweens.items()):
+            if not card.winfo_exists():
+                self._tweens.pop(card, None)
+                continue
+            self._put(card, fx + (tx - fx) * ease, fy + (ty - fy) * ease)
+        if t >= 1.0:
+            self._tweens.clear()
+            self._tween_job = None
+        else:
+            self._tween_job = self.after(theme.ANIM_FRAME_MS, self._tween_step)
+
+    def _stop_tween(self) -> None:
+        if self._tween_job is not None:
+            self.after_cancel(self._tween_job)
+            self._tween_job = None
+        self._tweens.clear()
 
     # ------------------------------------------------------------------ clique e arrasto
     def _card_at(self, x: int, y: int) -> Card | None:
@@ -151,28 +224,43 @@ class CardGrid(ctk.CTkScrollableFrame):
         return None
 
     def _press(self, card: Card, e) -> None:
-        self._drag = {"card": card, "x": e.x_root, "y": e.y_root, "active": False, "target": None}
+        self._drag = {"card": card, "x": e.x_root, "y": e.y_root, "active": False,
+                      "start": self.cards.index(card)}
+
+    def _pointer(self, e) -> tuple[float, float]:
+        """Posição do mouse dentro da grade, em medidas do tema."""
+        scale = self._scale()
+        return (e.x_root - self.winfo_rootx()) / scale, (e.y_root - self.winfo_rooty()) / scale
 
     def _motion(self, card: Card, e) -> None:
         d = self._drag
         if not d or d["card"] is not card:
             return
+        mx, my = self._pointer(e)
         if not d["active"]:
             moved = abs(e.x_root - d["x"]) + abs(e.y_root - d["y"])
             if moved < DRAG_THRESHOLD or not self.reorder_enabled:
                 return
             d["active"] = True
+            x, y = self._pos.get(card, (0, 0))
+            d["grab"] = (mx - x, my - y)          # onde o mouse pegou: o cartão não pula
+            self._tweens.pop(card, None)
             card.set_dragging(True)
-        target = self._card_at(e.x_root, e.y_root)
-        if target is card:
-            target = None
-        if target is not d["target"]:
-            if d["target"] is not None:
-                d["target"].set_drop_target(False)
-            if target is not None:
-                target.set_drop_target(True)
-            d["target"] = target
+            card.lift()
+        self._put(card, mx - d["grab"][0], my - d["grab"][1])
+        index = self._slot_at(mx, my)
+        if index != self.cards.index(card):
+            self.cards.remove(card)
+            self.cards.insert(index, card)
+            self._layout(skip=card)               # os outros deslizam para abrir espaço
         self._autoscroll(e.y_root)
+
+    def _slot_at(self, x: float, y: float) -> int:
+        """Vaga mais perto do mouse."""
+        slots = self._slots()
+        w = self._card_width
+        return min(range(len(slots)),
+                   key=lambda i: (slots[i][0] + w / 2 - x) ** 2 + (slots[i][1] + w * 0.45 - y) ** 2)
 
     def _autoscroll(self, y_root: int) -> None:
         canvas = self._parent_canvas
@@ -189,10 +277,10 @@ class CardGrid(ctk.CTkScrollableFrame):
             return
         if d["active"]:
             card.set_dragging(False)
-            target = d["target"]
-            if target is not None:
-                target.set_drop_target(False)
-                self.on_reorder(card.item_id, self.cards.index(target))
+            self._layout()                        # o cartão desliza para a vaga dele
+            new_index = self.cards.index(card)
+            if new_index != d["start"]:
+                self.on_reorder(card.item_id, new_index)
         elif self._card_at(e.x_root, e.y_root) is card:
             self.on_open(card.item_id)
 

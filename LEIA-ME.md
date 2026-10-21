@@ -76,6 +76,14 @@ Depois, configure a nuvem:
 
 ### Adicionar e remover: pelo painel ou pela pasta, tanto faz
 
+**Jeito mais rápido:** arraste arquivos do Windows Explorer (ou da Área de
+Trabalho) e solte em cima do painel. Eles são **copiados** para a pasta do
+painel e viram cartões na hora. O original continua onde estava.
+
+Para mudar a ordem dos cartões, arraste um cartão: os outros abrem espaço
+enquanto você arrasta. Os três pontinhos de cada cartão abrem o menu com
+abrir, mostrar na pasta, editar, mover e remover.
+
 As duas formas funcionam ao mesmo tempo:
 
 - **Pela pasta:** coloque um arquivo em `Dados\Arquivos` e em até 2 segundos

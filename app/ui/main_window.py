@@ -11,7 +11,6 @@ import logging
 import os
 import queue
 import threading
-import tkinter
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +27,7 @@ from app.core.file_types import CATEGORIES, FILTER_ORDER, FileCategory, badge_fo
 from app.core.library import AddMode, LibraryError, is_ignored
 from app.core.models import BackupRecord, BackupStatus, BackupTrigger, Item, ItemKind
 from app.core.panel import Panel
-from app.ui import art, text, theme
+from app.ui import art, dropfiles, text, theme
 from app.ui.dialogs.add_items import AddLinkDialog, AddModeDialog
 from app.ui.dialogs.base import confirm, message, set_window_icon, style_titlebar
 from app.ui.dialogs.edit_item import EditItemDialog
@@ -39,6 +38,7 @@ from app.ui.widgets.card import CardData
 from app.ui.widgets.card_grid import CardGrid
 from app.ui.widgets.filters import ALL, FilterBar
 from app.ui.widgets.header import Header
+from app.ui.widgets.popup_menu import SEPARATOR, MenuItem, PopupMenu
 from app.ui.widgets.toast import Toast
 from app.ui.widgets.update_bar import UpdateBar
 
@@ -85,7 +85,7 @@ class MainWindow(ctk.CTk):
         self.filters.grid(row=2, column=0, sticky="ew", padx=26, pady=(16, 0))
 
         self.cards = CardGrid(self, on_open=self.open_item, on_menu=self._show_item_menu,
-                              on_reorder=self._reorder)
+                              on_reorder=self._save_order)
         self.cards.grid(row=3, column=0, sticky="nsew")
 
         self.backup_bar = BackupBar(self, on_backup=lambda: self.start_backup(),
@@ -100,6 +100,7 @@ class MainWindow(ctk.CTk):
         self.refresh()
         self.after(POLL_MS, self._poll)
         self.after(1500, self._startup_tasks)
+        self.after(300, lambda: dropfiles.enable(self, self._on_files_dropped))
 
     # ================================================================== tela
     def refresh(self, *, sync: bool = True) -> None:
@@ -124,7 +125,7 @@ class MainWindow(ctk.CTk):
         if not items:
             self.cards.show_empty(
                 "Seu painel está vazio",
-                "Coloque arquivos na pasta do painel ou adicione por aqui. "
+                "Arraste arquivos para esta janela ou use o botão Adicionar. "
                 "Planilhas, PDFs, documentos, fotos, pastas e até sites: tudo vira um cartão.",
                 [("Adicionar arquivos", self._add_files, True),
                  ("Abrir a pasta do painel", self._open_files_folder, False)],
@@ -277,34 +278,21 @@ class MainWindow(ctk.CTk):
         item = self._item(item_id)
         if item is None:
             return
-        menu = self._menu()
-        menu.add_command(label="Abrir", command=lambda: self.open_item(item_id))
+        items: list[MenuItem | None] = [MenuItem("Abrir", lambda: self.open_item(item_id))]
         if item.kind is not ItemKind.LINK:
-            menu.add_command(label="Mostrar na pasta", command=lambda: self._reveal(item))
-        menu.add_separator()
-        menu.add_command(label="Editar nome, foto e cor...", command=lambda: self.edit_item(item_id))
+            items.append(MenuItem("Mostrar na pasta", lambda: self._reveal(item)))
+        items.append(MenuItem("Editar nome, foto e cor", lambda: self.edit_item(item_id)))
         if not self.search_text and self.filters.selected == ALL:
-            menu.add_separator()
-            menu.add_command(label="Mover para o começo", command=lambda: self._reorder(item_id, 0))
-            menu.add_command(label="Mover para o fim",
-                             command=lambda: self._reorder(item_id, len(self.lib.visible_items())))
-        menu.add_separator()
-        menu.add_command(label="Remover do painel...", command=lambda: self.remove_item(item_id))
+            items += [SEPARATOR,
+                      MenuItem("Mover para o começo", lambda: self._reorder(item_id, 0)),
+                      MenuItem("Mover para o fim",
+                               lambda: self._reorder(item_id, len(self.lib.visible_items())))]
+        items += [SEPARATOR, MenuItem("Remover do painel", lambda: self.remove_item(item_id), danger=True)]
         if event is not None and getattr(event, "x_root", None) is not None:
             x, y = event.x_root, event.y_root
-        else:
-            x, y = anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height()
-        try:
-            menu.tk_popup(x, y)
-        finally:
-            menu.grab_release()
-
-    def _menu(self) -> tkinter.Menu:
-        return tkinter.Menu(
-            self, tearoff=0, bd=0, relief="flat", font=(theme.UI_FAMILY, 10),
-            bg=theme.pick(C["surface"]), fg=theme.pick(C["text"]),
-            activebackground=theme.pick(C["chip"]), activeforeground=theme.pick(C["text"]),
-        )
+        else:                                    # pelos três pontinhos: logo abaixo deles
+            x, y = anchor.winfo_rootx() - 8, anchor.winfo_rooty() + anchor.winfo_height() + 4
+        PopupMenu(self, items, title=text.shorten(item.name, 32)).popup(x, y)
 
     def edit_item(self, item_id: str) -> None:
         item = self._item(item_id)
@@ -337,6 +325,10 @@ class MainWindow(ctk.CTk):
         self.lib.move(item_id, index)
         self.refresh(sync=False)
 
+    def _save_order(self, item_id: str, index: int) -> None:
+        """Depois de arrastar: a grade já mostra a ordem nova, só falta gravar."""
+        self.lib.move(item_id, index)
+
     def _reveal(self, item: Item) -> None:
         path = self.lib.path_of(item)
         if path is None:
@@ -348,14 +340,10 @@ class MainWindow(ctk.CTk):
 
     # ================================================================== adicionar
     def _show_add_menu(self, button: ctk.CTkButton) -> None:
-        menu = self._menu()
-        menu.add_command(label="Arquivos...", command=self._add_files)
-        menu.add_command(label="Uma pasta inteira...", command=self._add_folder)
-        menu.add_command(label="Um site...", command=self._add_link)
-        try:
-            menu.tk_popup(button.winfo_rootx(), button.winfo_rooty() + button.winfo_height() + 4)
-        finally:
-            menu.grab_release()
+        PopupMenu(self, [MenuItem("Arquivos", self._add_files),
+                         MenuItem("Uma pasta inteira", self._add_folder),
+                         MenuItem("Um site", self._add_link)], width=200).popup(
+            button.winfo_rootx(), button.winfo_rooty() + button.winfo_height() + 6)
 
     def _add_files(self) -> None:
         chosen = filedialog.askopenfilenames(parent=self, title="Escolha os arquivos para o painel")
@@ -380,6 +368,23 @@ class MainWindow(ctk.CTk):
         if result.added:
             n = len(result.added)
             self.toast.show(f"{text.plural(n, 'item adicionado', 'itens adicionados')} ao painel.")
+        if result.skipped:
+            lines = "\n".join(f"• {name}: {why}" for name, why in result.skipped)
+            message(self, "Alguns itens ficaram de fora", lines)
+
+    def _on_files_dropped(self, paths: list[Path]) -> None:
+        """Arquivos soltos do Explorer: copia para a pasta do painel e vira cartão."""
+        files_dir = self.panel.paths.files.resolve()
+        new = [p for p in paths
+               if p.exists() and p.resolve() != files_dir and files_dir not in p.resolve().parents]
+        if not new:
+            self.toast.show("Esses arquivos já estão no painel.", "warn")
+            return
+        result = self.lib.add_paths(new, mode=AddMode.COPY)
+        self.refresh()
+        if result.added:
+            n = len(result.added)
+            self.toast.show(f"{text.plural(n, 'item copiado', 'itens copiados')} para a pasta do painel.")
         if result.skipped:
             lines = "\n".join(f"• {name}: {why}" for name, why in result.skipped)
             message(self, "Alguns itens ficaram de fora", lines)
