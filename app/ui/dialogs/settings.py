@@ -13,7 +13,7 @@ from app.core.cloud import detect_cloud_folders
 from app.core.models import WEEKDAYS, Settings
 from app.core.panel import Panel
 from app.ui import theme
-from app.ui.dialogs.base import Dialog, message
+from app.ui.dialogs.base import Dialog, message, style_titlebar
 from app.ui.theme import C
 
 KEEP_OPTIONS = ["5", "10", "15", "20", "30", "52"]
@@ -186,9 +186,10 @@ class SettingsDialog(Dialog):
         self._heading(tab, "Aparência")
         reverse = {v: k for k, v in APPEARANCE.items()}
         self.appearance = ctk.CTkSegmentedButton(tab, values=list(APPEARANCE), font=theme.font(13),
-                                                 height=32)
+                                                 height=32, command=self._change_theme)
         self.appearance.set(reverse.get(self.s.theme, "Automática"))
-        self.appearance.pack(anchor="w", padx=18, pady=(4, 12))
+        self.appearance.pack(anchor="w", padx=18, pady=(4, 2))
+        self._note(tab, "Muda na hora, sem precisar salvar.", pady=(0, 12))
 
         self._heading(tab, "Atalhos e pastas")
         row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -206,6 +207,15 @@ class SettingsDialog(Dialog):
             theme.link_button(row, text, lambda f=folder: self._open(f)).pack(anchor="w", pady=2)
 
         self._note(tab, f"{APP_NAME} {__version__}. Os dados ficam em {paths.root}", pady=(16, 0))
+
+    def _change_theme(self, label: str) -> None:
+        """Aplica e guarda a aparência assim que é escolhida (não espera o Salvar)."""
+        value = APPEARANCE.get(label, "auto")
+        self.s.theme = value                       # o Salvar depois não desfaz a escolha
+        self.panel.set_theme(value)
+        ctk.set_appearance_mode(theme.APPEARANCE[value])
+        style_titlebar(self)
+        style_titlebar(self.owner)
 
     def _shortcut(self) -> None:
         try:

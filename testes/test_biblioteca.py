@@ -152,3 +152,11 @@ def test_configuracao_sobrevive_a_reabrir(panel):
 def test_nome_bonito():
     assert pretty_name("controle_precos.xlsx") == "Controle precos"
     assert pretty_name("Contas a Pagar.xlsm") == "Contas a Pagar"
+
+
+def test_aparencia_fica_guardada_na_hora(panel):
+    panel.set_theme("escuro")
+    from app.core.panel import Panel
+    assert Panel(panel.paths).settings.theme == "escuro"      # abre de novo e continua escura
+    with pytest.raises(ValueError):
+        panel.set_theme("roxo")

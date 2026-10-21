@@ -58,6 +58,14 @@ class Panel:
                     self.store.save()
                 raise
 
+    def set_theme(self, value: str) -> None:
+        """Guarda a aparência na hora em que é escolhida ("auto", "claro" ou "escuro")."""
+        if value not in ("auto", "claro", "escuro"):
+            raise ValueError(f"Aparência desconhecida: {value}")
+        if self.settings.theme != value:
+            self.settings.theme = value
+            self.store.save()
+
     def save_window_geometry(self, geometry: str) -> None:
         if self.settings.window_geometry != geometry:
             self.settings.window_geometry = geometry
