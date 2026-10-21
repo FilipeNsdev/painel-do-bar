@@ -1,0 +1,2 @@
+# .bat precisa de quebra de linha do Windows (CRLF)
+*.bat text eol=crlf

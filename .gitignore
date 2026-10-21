@@ -1,0 +1,13 @@
+# ambiente e build
+.venv/
+build/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# dados reais do bar (nunca vão para o GitHub)
+Dados/
+
+# capturas de tela geradas por ferramentas/capturar_telas.py
+capturas/
