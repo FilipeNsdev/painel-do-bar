@@ -114,7 +114,7 @@ def publicar(nova: str, notas: str) -> None:
         rodar(sys.executable, "-m", "pytest", "-q")
 
         passo("Gerando o PainelDoBar.exe")
-        rodar("cmd", "/c", "gerar_exe.bat", stdin=subprocess.DEVNULL)
+        rodar("cmd", "/c", str(ROOT / "gerar_exe.bat"), stdin=subprocess.DEVNULL)
         exe = ROOT / "dist" / ASSET_NAME
         if not exe.exists():
             raise Parar("O gerar_exe.bat terminou, mas não achei o dist\\PainelDoBar.exe.")
