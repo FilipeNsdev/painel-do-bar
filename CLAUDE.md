@@ -140,6 +140,9 @@ A logo real (o Sabão de camisa vermelha, recortada em círculo) está em
   (`CREATE_NO_WINDOW`; com `DETACHED_PROCESS` ele morre calado), sair do "job" do .exe
   (`CREATE_BREAKAWAY_FROM_JOB`, senão morre junto) e abrir o painel novo sem as variáveis
   `_PYI_*` herdadas (`PYINSTALLER_RESET_ENVIRONMENT=1`). Ele anota tudo em `%TEMP%\PainelDoBar_atualizacao.log`.
+- Dentro de uma função ligada direto ao Windows (o `proc` de `dropfiles.py`) **não chame o Tk**,
+  nem `after`: o .exe fecha na hora ("Fatal Python error: PyEval_RestoreThread", 0xc0000409 no
+  ucrtbase). Anote numa fila e deixe um `after` normal da janela buscar.
 - No Windows, uma janela nova não vem para a frente sozinha: `capturar_telas.py` põe tudo
   em `-topmost` só na hora da foto. Sem isso as imagens saem com o que estiver por cima.
 

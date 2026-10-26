@@ -3,6 +3,11 @@
 O Tk não sabe receber arquivos soltos. Aqui a janela pede ao Windows para
 aceitar (DragAcceptFiles) e intercepta a mensagem WM_DROPFILES, que traz a
 lista de caminhos. Em outros sistemas, não faz nada.
+
+Importante: dentro dessa mensagem do Windows não se pode chamar o Tk (nem um
+simples `after`): o Python perde o controle da linha de execução e o painel
+fecha na hora ("Fatal Python error: PyEval_RestoreThread"). Por isso a
+mensagem só anota os caminhos numa fila, e a janela confere a fila sozinha.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ _WM_COPYDATA = 0x004A
 _WM_COPYGLOBALDATA = 0x0049
 _GWLP_WNDPROC = -4
 _MSGFLT_ALLOW = 1
+POLL_MS = 150     # de quanto em quanto tempo a janela confere se soltaram arquivos
 
 # referências vivas enquanto a janela existir (senão o Python apaga a função e o Windows trava)
 _keep: list[object] = []
@@ -56,11 +62,20 @@ def enable(window, on_drop: Callable[[list[Path]], None]) -> bool:
             return paths
 
         old_proc = None
+        pending: list[list[Path]] = []
+
+        def poll() -> None:
+            """Roda no ritmo normal da janela, onde chamar o Tk é seguro."""
+            while pending:
+                on_drop(pending.pop(0))
+            try:
+                window.after(POLL_MS, poll)
+            except Exception:  # noqa: BLE001  (janela fechando)
+                pass
 
         def proc(h, msg, wparam, lparam):
             if msg == _WM_DROPFILES:
-                paths = read_paths(wparam)
-                window.after(0, lambda: on_drop(paths))       # trata fora da mensagem do Windows
+                pending.append(read_paths(wparam))            # só anota: nada de Tk aqui
                 return 0
             return user32.CallWindowProcW(old_proc, h, msg, wparam, lparam)
 
@@ -68,6 +83,7 @@ def enable(window, on_drop: Callable[[list[Path]], None]) -> bool:
         old_proc = user32.SetWindowLongPtrW(hwnd, _GWLP_WNDPROC, ctypes.cast(callback, ctypes.c_void_p))
         _keep.append(callback)
         shell32.DragAcceptFiles(hwnd, True)
+        window.after(POLL_MS, poll)
         # se o painel estiver "como administrador", o Explorer só consegue soltar com isto
         for msg in (_WM_DROPFILES, _WM_COPYDATA, _WM_COPYGLOBALDATA):
             user32.ChangeWindowMessageFilterEx(hwnd, msg, _MSGFLT_ALLOW, None)
